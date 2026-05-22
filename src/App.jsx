@@ -330,10 +330,14 @@ export default function AGROTECH(){
     if(form.fecha>hoy){setRespF({tipo:"error",mensaje:`📅 La fecha ${form.fecha} es futura. ¿Quisiste poner hoy (${hoy})?`});return;}
     setLoadF(true);setRespF(null);
     const p=await callIA(PF,JSON.stringify({...form,campo:form.lote}));setRespF(p);
-    if(p.tipo!=="error"){
-      addReg({cultivo:form.producto,cantidad_kg:cant,campo:form.lote,calidad:form.calidad,fecha:form.fecha,problema:form.problema,trabajadores:form.trabajadores,tipo:p.tipo||"ok",ia_comentario:p.mensaje,hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})});
-      setForm({producto:"",cantidad:"",calidad:"",lote:"",fecha:hoy,problema:"Ninguno — todo bien",trabajadores:"",obs:""});
+    if(p.tipo==="error"){setLoadF(false);return;}
+    if(p.tipo==="alerta"){
+      setLoadF(false);
+      const confirmar=window.confirm("⚠️ AGROTECH detectó una inconsistencia:\n\n"+(p.mensaje||"Hay datos que no cuadran.")+"\n\n¿Aún así quieres guardar este registro?");
+      if(!confirmar)return;
     }
+    addReg({cultivo:form.producto,cantidad_kg:cant,campo:form.lote,calidad:form.calidad,fecha:form.fecha,problema:form.problema,trabajadores:form.trabajadores,tipo:p.tipo||"ok",ia_comentario:p.mensaje,hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})});
+    setForm({producto:"",cantidad:"",calidad:"",lote:"",fecha:hoy,problema:"Ninguno — todo bien",trabajadores:"",obs:""});
     setLoadF(false);
   }
 
