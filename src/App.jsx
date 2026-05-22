@@ -51,14 +51,19 @@ EXTRAE: cultivo, cantidad_kg(número), campo, calidad(Primera/Segunda/Tercera/De
 VALIDA: espárrago max 2000kg, palta max 3000kg, arándano max 500kg. Fecha no futura. Responde amable.
 SOLO JSON: {"mensaje":"texto","tipo":"ok|alerta|error","datos":{cultivo,cantidad_kg,campo,calidad,fecha,trabajadores,problema},"campos_faltantes":[],"observacion_ia":"nota","sugerencia_correccion":"ejemplo si error"}`;
 
-const PF = `Eres AGROTECH, validador agrícola peruano estricto. Valida el formulario de cosecha.
-REGLAS DE INCONSISTENCIA — marca tipo "alerta" si:
-- Calidad "Tercera" o "Descarte" con problema "Ninguno — todo bien" (tercera calidad SIEMPRE tiene algún problema)
-- Cantidad de kg imposible para ese cultivo (ej: 10000 kg de arándano en un día)
-- Fecha futura
-- Calidad "Primera (Premium)" con problemas graves como plaga o hongo
+const PF = `Eres AGROTECH, validador agrícola peruano. Valida el formulario de cosecha.
+REGLAS — marca tipo "error" SOLO si:
+- Cantidad de kg es imposible para ese cultivo (ej: 50000 kg de arándano en un día)
+- Fecha es claramente futura (mayor a la fecha de hoy, NO contar hoy como futuro)
 
-SOLO JSON: {"mensaje":"explicación clara","tipo":"ok|alerta|error","observacion_ia":"comentario"}`;
+Marca tipo "alerta" SOLO si hay contradicción GRAVE:
+- Calidad "Primera (Premium)" con problema "Plaga detectada" o "Hongos/enfermedades"
+- Calidad "Tercera" o "Descarte" con problema "Ninguno — todo bien"
+
+Todo lo demás es tipo "ok" — Segunda calidad con bajo rendimiento es NORMAL y válido.
+Fecha de HOY siempre es válida. Solo bloquea fechas de mañana en adelante.
+
+SOLO JSON: {"mensaje":"respuesta amable","tipo":"ok|alerta|error","observacion_ia":"comentario"}`;
 
 const PA = `Eres AGROTECH, sistema de alertas agrícolas peruano. Analiza historial de cosechas.
 Detecta: caída >20%, problemas recurrentes, calidad deteriorándose.
@@ -151,9 +156,11 @@ function calcKPIs(regs) {
   const campos=[...new Set(regs.map(r=>r.campo||r.lote).filter(Boolean))];
   const cultivos=[...new Set(regs.map(r=>r.cultivo).filter(Boolean))];
   const dias=[];
+  const _hoy=new Date();
   for(let i=6;i>=0;i--){
-    const d=new Date(2026,4,18-i);
-    const f=`2026-05-${String(d.getDate()).padStart(2,"0")}`;
+    const d=new Date(_hoy);
+    d.setDate(_hoy.getDate()-i);
+    const f=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     dias.push({dia:d.toLocaleDateString("es-PE",{weekday:"short"}),kg:regs.filter(r=>r.fecha===f).reduce((s,r)=>s+Number(r.cantidad_kg||0),0)});
   }
   const porCultivo=cultivos.map(cv=>({name:cv.split(" ")[0],value:regs.filter(r=>r.cultivo===cv).reduce((s,r)=>s+Number(r.cantidad_kg||0),0)})).sort((a,b)=>b.value-a.value).slice(0,5);
@@ -336,13 +343,27 @@ export default function AGROTECH(){
     if(form.fecha>hoy){setRespF({tipo:"error",mensaje:`📅 La fecha ${form.fecha} es futura. ¿Quisiste poner hoy (${hoy})?`});return;}
     setLoadF(true);setRespF(null);
     const p=await callIA(PF,JSON.stringify({...form,campo:form.lote}));setRespF(p);
-    if(p.tipo==="error"){setLoadF(false);return;}
+    if(p.tipo==="error"){
+      setLoadF(false);
+      return;
+    }
     if(p.tipo==="alerta"){
       setLoadF(false);
-      const confirmar=window.confirm("⚠️ AGROTECH detectó una inconsistencia:\n\n"+(p.mensaje||"Hay datos que no cuadran.")+"\n\n¿Aún así quieres guardar este registro?");
+      const confirmar=window.confirm("⚠️ AGROTECH detectó un problema:\n\n"+(p.mensaje||"Hay datos que no cuadran.")+"\n\n¿Aún así quieres guardar este registro?");
       if(!confirmar)return;
     }
-    addReg({cultivo:form.producto,cantidad_kg:cant,campo:form.lote,calidad:form.calidad,fecha:form.fecha,problema:form.problema,trabajadores:form.trabajadores,tipo:p.tipo||"ok",ia_comentario:p.mensaje,hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})});
+    addReg({
+      cultivo:form.producto,
+      cantidad_kg:cant,
+      campo:form.lote,
+      calidad:form.calidad,
+      fecha:form.fecha,
+      problema:form.problema,
+      trabajadores:form.trabajadores,
+      tipo:p.tipo||"ok",
+      ia_comentario:p.mensaje,
+      hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})
+    });
     setForm({producto:"",cantidad:"",calidad:"",lote:"",fecha:hoy,problema:"Ninguno — todo bien",trabajadores:"",obs:""});
     setLoadF(false);
   }
@@ -611,7 +632,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
 
         {/* Footer */}
         <div style={{padding:"8px 5px",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-          {sb&&stOk&&<button onClick={async()=>{if(window.confirm("¿Borrar todos los registros?")){setRegs(DEMO);try{await window.storage.delete("ag:regs");}catch{}toast("Datos borrados.");}}} style={{width:"100%",background:"rgba(198,40,40,0.15)",border:"1px solid rgba(198,40,40,0.2)",color:"rgba(255,120,120,0.8)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>🗑️ Borrar registros</button>}
+          {sb&&stOk&&<button onClick={async()=>{if(window.confirm("¿Borrar todos los registros? Esta acción no se puede deshacer.")){try{await window.storage.delete("ag:regs");}catch{}setRegs([]);toast("Datos borrados.");}}} style={{width:"100%",background:"rgba(198,40,40,0.15)",border:"1px solid rgba(198,40,40,0.2)",color:"rgba(255,120,120,0.8)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>🗑️ Borrar registros</button>}
 
         </div>
       </div>
