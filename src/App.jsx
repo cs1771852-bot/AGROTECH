@@ -51,8 +51,14 @@ EXTRAE: cultivo, cantidad_kg(número), campo, calidad(Primera/Segunda/Tercera/De
 VALIDA: espárrago max 2000kg, palta max 3000kg, arándano max 500kg. Fecha no futura. Responde amable.
 SOLO JSON: {"mensaje":"texto","tipo":"ok|alerta|error","datos":{cultivo,cantidad_kg,campo,calidad,fecha,trabajadores,problema},"campos_faltantes":[],"observacion_ia":"nota","sugerencia_correccion":"ejemplo si error"}`;
 
-const PF = `Eres AGROTECH, validador agrícola peruano. Valida formulario de cosecha. Responde amable.
-SOLO JSON: {"mensaje":"respuesta","tipo":"ok|alerta|error","observacion_ia":"comentario"}`;
+const PF = `Eres AGROTECH, validador agrícola peruano estricto. Valida el formulario de cosecha.
+REGLAS DE INCONSISTENCIA — marca tipo "alerta" si:
+- Calidad "Tercera" o "Descarte" con problema "Ninguno — todo bien" (tercera calidad SIEMPRE tiene algún problema)
+- Cantidad de kg imposible para ese cultivo (ej: 10000 kg de arándano en un día)
+- Fecha futura
+- Calidad "Primera (Premium)" con problemas graves como plaga o hongo
+
+SOLO JSON: {"mensaje":"explicación clara","tipo":"ok|alerta|error","observacion_ia":"comentario"}`;
 
 const PA = `Eres AGROTECH, sistema de alertas agrícolas peruano. Analiza historial de cosechas.
 Detecta: caída >20%, problemas recurrentes, calidad deteriorándose.
