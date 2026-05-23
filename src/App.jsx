@@ -25,7 +25,16 @@ const G = {
 
 const CULTIVOS = ["Espárrago verde","Espárrago blanco","Palta Hass","Arándano","Uva Red Globe","Uva Thompson","Mango Kent","Mango Edward","Mandarina","Naranja","Maracuyá","Quinua","Papa","Cebolla","Tomate","Ají amarillo","Otro cultivo"];
 const PROBLEMAS = ["Ninguno — todo bien","Plaga detectada","Hongos o enfermedad","Daño por granizo","Bajo rendimiento","Falla de riego","Clima adverso","Falta de personal","Otro problema"];
-const hoy=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+const hoy=(()=>{
+  const d=new Date();
+  // Ajustar a zona horaria de Perú (UTC-5)
+  const peruOffset=-5*60;
+  const localOffset=d.getTimezoneOffset();
+  const peruDate=new Date(d.getTime()+(localOffset+peruOffset)*60000*-1);
+  // Usar fecha local del navegador del usuario (más confiable)
+  const local=new Date();
+  return `${local.getFullYear()}-${String(local.getMonth()+1).padStart(2,"0")}-${String(local.getDate()).padStart(2,"0")}`;
+})();
 
 const makeDemo=()=>{
   const d=new Date();
@@ -340,7 +349,8 @@ export default function AGROTECH(){
     if(cant>(max[form.producto]||5000)*2){setRespF({tipo:"error",mensaje:`⚠️ ${cant} kg parece demasiado para ${form.producto}. Revisa el número.`});return;}
     if(!form.calidad){setRespF({tipo:"alerta",mensaje:"🏷️ Elige la calidad."});return;}
     if(!form.lote){setRespF({tipo:"alerta",mensaje:"📍 Escribe el nombre del campo."});return;}
-    if(form.fecha>hoy){setRespF({tipo:"error",mensaje:`📅 La fecha ${form.fecha} es futura. ¿Quisiste poner hoy (${hoy})?`});return;}
+    const fechaHoyLocal=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+    if(form.fecha>fechaHoyLocal){setRespF({tipo:"error",mensaje:`📅 La fecha ${form.fecha} es futura. ¿Quisiste poner hoy (${fechaHoyLocal})?`});return;}
     setLoadF(true);setRespF(null);
     const p=await callIA(PF,JSON.stringify({...form,campo:form.lote}));setRespF(p);
     if(p.tipo==="error"){
