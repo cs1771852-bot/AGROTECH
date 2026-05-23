@@ -61,16 +61,16 @@ VALIDA: espárrago max 2000kg, palta max 3000kg, arándano max 500kg. Fecha no f
 SOLO JSON: {"mensaje":"texto","tipo":"ok|alerta|error","datos":{cultivo,cantidad_kg,campo,calidad,fecha,trabajadores,problema},"campos_faltantes":[],"observacion_ia":"nota","sugerencia_correccion":"ejemplo si error"}`;
 
 const PF = `Eres AGROTECH, validador agrícola peruano. Valida el formulario de cosecha.
-REGLAS — marca tipo "error" SOLO si:
-- Cantidad de kg es imposible para ese cultivo (ej: 50000 kg de arándano en un día)
-- Fecha es claramente futura (mayor a la fecha de hoy, NO contar hoy como futuro)
+IMPORTANTE: NO valides la fecha — eso ya lo hace el sistema. Confía en que la fecha es válida.
 
-Marca tipo "alerta" SOLO si hay contradicción GRAVE:
+Marca tipo "error" SOLO si:
+- Cantidad de kg es imposible (ej: 50000 kg de arándano en un día)
+
+Marca tipo "alerta" SOLO si hay contradicción GRAVE entre calidad y problema:
 - Calidad "Primera (Premium)" con problema "Plaga detectada" o "Hongos/enfermedades"
 - Calidad "Tercera" o "Descarte" con problema "Ninguno — todo bien"
 
-Todo lo demás es tipo "ok" — Segunda calidad con bajo rendimiento es NORMAL y válido.
-Fecha de HOY siempre es válida. Solo bloquea fechas de mañana en adelante.
+Todo lo demás es tipo "ok". Segunda calidad con bajo rendimiento es NORMAL.
 
 SOLO JSON: {"mensaje":"respuesta amable","tipo":"ok|alerta|error","observacion_ia":"comentario"}`;
 
