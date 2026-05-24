@@ -40,17 +40,17 @@ const makeDemo=()=>{
   const d=new Date();
   const f=(n)=>{const x=new Date(d);x.setDate(d.getDate()-n);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;};
   return [
-    {cultivo:"Espárrago verde",cantidad_kg:420,campo:"La Loma",calidad:"Primera",fecha:f(0),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Excelente cosecha.",hora:"07:30"},
-    {cultivo:"Espárrago verde",cantidad_kg:380,campo:"La Loma",calidad:"Primera",fecha:f(1),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Muy buena producción.",hora:"07:45"},
-    {cultivo:"Espárrago verde",cantidad_kg:290,campo:"La Loma",calidad:"Segunda",fecha:f(2),problema:"Bajo rendimiento",tipo:"alerta",ia_comentario:"Rendimiento bajando.",hora:"08:00"},
-    {cultivo:"Espárrago verde",cantidad_kg:260,campo:"La Loma",calidad:"Segunda",fecha:f(3),problema:"Bajo rendimiento",tipo:"alerta",ia_comentario:"Tendencia a la baja.",hora:"08:10"},
-    {cultivo:"Palta Hass",cantidad_kg:650,campo:"Zona Norte",calidad:"Primera",fecha:f(0),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Excelente cosecha.",hora:"09:00"},
-    {cultivo:"Palta Hass",cantidad_kg:620,campo:"Zona Norte",calidad:"Primera",fecha:f(1),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Producción estable.",hora:"09:15"},
-    {cultivo:"Palta Hass",cantidad_kg:580,campo:"Zona Norte",calidad:"Primera",fecha:f(2),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Muy buena producción.",hora:"08:30"},
-    {cultivo:"Arándano",cantidad_kg:45,campo:"El Bajo",calidad:"Segunda",fecha:f(0),problema:"Plaga detectada",tipo:"error",ia_comentario:"Plaga de áfidos. Urgente.",hora:"10:00"},
-    {cultivo:"Arándano",cantidad_kg:110,campo:"El Bajo",calidad:"Primera",fecha:f(2),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Buena cosecha.",hora:"10:00"},
-    {cultivo:"Mango Kent",cantidad_kg:320,campo:"Chacra Grande",calidad:"Primera",fecha:f(0),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Excelente mango.",hora:"11:00"},
-    {cultivo:"Mango Kent",cantidad_kg:350,campo:"Chacra Grande",calidad:"Primera",fecha:f(1),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Buena producción.",hora:"11:10"},
+    {cultivo:"Espárrago verde",cantidad_kg:420,campo:"La Loma",calidad:"Primera (Premium)",fecha:f(1),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Excelente cosecha.",hora:"07:30",trabajadores:"Juan, María"},
+    {cultivo:"Espárrago verde",cantidad_kg:380,campo:"La Loma",calidad:"Primera (Premium)",fecha:f(2),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Muy buena producción.",hora:"07:45",trabajadores:"Juan"},
+    {cultivo:"Espárrago verde",cantidad_kg:290,campo:"La Loma",calidad:"Segunda",fecha:f(3),problema:"Bajo rendimiento",tipo:"alerta",ia_comentario:"Rendimiento bajando.",hora:"08:00",trabajadores:"María, José"},
+    {cultivo:"Espárrago verde",cantidad_kg:260,campo:"La Loma",calidad:"Segunda",fecha:f(4),problema:"Bajo rendimiento",tipo:"alerta",ia_comentario:"Tendencia a la baja.",hora:"08:10",trabajadores:"José"},
+    {cultivo:"Palta Hass",cantidad_kg:650,campo:"Zona Norte",calidad:"Primera (Premium)",fecha:f(1),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Excelente cosecha.",hora:"09:00",trabajadores:"Carlos"},
+    {cultivo:"Palta Hass",cantidad_kg:620,campo:"Zona Norte",calidad:"Primera (Premium)",fecha:f(2),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Producción estable.",hora:"09:15",trabajadores:"Carlos, Ana"},
+    {cultivo:"Palta Hass",cantidad_kg:580,campo:"Zona Norte",calidad:"Primera (Premium)",fecha:f(3),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Muy buena producción.",hora:"08:30",trabajadores:"Ana"},
+    {cultivo:"Arándano",cantidad_kg:45,campo:"El Bajo",calidad:"Segunda",fecha:f(2),problema:"Plaga detectada",tipo:"error",ia_comentario:"Plaga de áfidos. Urgente.",hora:"10:00",trabajadores:"Luis"},
+    {cultivo:"Arándano",cantidad_kg:110,campo:"El Bajo",calidad:"Primera (Premium)",fecha:f(4),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Buena cosecha.",hora:"10:00",trabajadores:"Luis, María"},
+    {cultivo:"Mango Kent",cantidad_kg:320,campo:"Chacra Grande",calidad:"Primera (Premium)",fecha:f(1),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Excelente mango.",hora:"11:00",trabajadores:"Pedro"},
+    {cultivo:"Mango Kent",cantidad_kg:350,campo:"Chacra Grande",calidad:"Primera (Premium)",fecha:f(2),problema:"Ninguno — todo bien",tipo:"ok",ia_comentario:"Buena producción.",hora:"11:10",trabajadores:"Pedro, Juan"},
   ];
 };
 const DEMO=makeDemo();
@@ -290,6 +290,7 @@ export default function AGROTECH(){
   // Gestión de campos con hectáreas
   const [campos,setCampos]=useState({});
   const [kpiModal,setKpiModal]=useState(null);
+  const [iaInfo,setIaInfo]=useState(false);
   // Análisis de foto
   const [foto,setFoto]=useState(null);
   const [fotoPreview,setFotoPreview]=useState(null);
@@ -689,9 +690,16 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
               <div style={{fontSize:8,color:G.dorado,fontWeight:700}}>KG HOY</div>
               <div style={{fontSize:13,fontWeight:800,color:G.dorado,lineHeight:1}}>{kpis.totalHoy.toLocaleString()}</div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:5,background:G.verdeC,border:`1px solid ${G.verde}25`,borderRadius:20,padding:"3px 10px"}}>
+            <div onClick={()=>setIaInfo(v=>!v)} style={{display:"flex",alignItems:"center",gap:5,background:G.verdeC,border:`1px solid ${G.verde}25`,borderRadius:20,padding:"3px 10px",cursor:"pointer",position:"relative"}}>
               <div style={{width:5,height:5,borderRadius:"50%",background:G.verde,animation:"pulse 1.5s infinite"}}/>
               <span style={{fontSize:10,fontWeight:600,color:G.verde}}>IA Activa</span>
+              {iaInfo&&<div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:30,right:0,background:"#0a1628",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"12px 14px",width:240,zIndex:999,boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#86efac",marginBottom:8}}>🤖 ¿Qué hace la IA?</div>
+                {["✅ Valida tus registros de cosecha","🔍 Detecta inconsistencias y errores","📊 Predice tu producción futura","🌤️ Predice el clima de tu zona","🐛 Detecta plagas por foto o síntomas","💬 Responde tus preguntas agrícolas","📋 Genera reportes automáticos"].map((item,i)=>(
+                  <div key={i} style={{fontSize:10,color:"rgba(255,255,255,0.75)",marginBottom:5}}>{item}</div>
+                ))}
+                <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.1)",fontSize:9,color:"rgba(255,255,255,0.4)"}}>Toca fuera para cerrar</div>
+              </div>}
             </div>
           </div>
         </div>
