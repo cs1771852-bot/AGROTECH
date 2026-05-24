@@ -55,22 +55,19 @@ const makeDemo=()=>{
 };
 const DEMO=makeDemo();
 
-const PN = `Eres AGROTECH, asistente IA agrícola peruana. Extrae datos de cosecha del texto del agricultor.
+const PN = `Eres AGROTECH, asistente IA agrícola peruana. Extrae datos de cosecha.
 
-FECHA DE HOY: ${hoy} — Si el agricultor dice "hoy", "esta mañana", "ahora", usa esta fecha exacta: ${hoy}
+REGLAS:
+1. El agricultor puede escribir mal — entiende igual
+2. Respeta EXACTAMENTE los nombres de campo y trabajadores como los escribió
+3. Normaliza cultivos: "arandano/arándanos" → "Arándano", "esparragos" → "Espárrago verde", "palta" → "Palta Hass"
+4. Normaliza calidad: "primera/1era/premium" → "Primera (Premium)", "segunda/2da" → "Segunda", "tercera/3ra" → "Tercera", "descarte" → "Descarte"
+5. Si dice "hoy" o "esta mañana" → usa la fecha de hoy que viene en el mensaje
+6. tipo "alerta" SOLO si: Primera calidad + plaga/hongo, O Tercera/Descarte + sin problemas
+7. Segunda calidad + cualquier problema o sin problema → tipo "ok" siempre
+8. NO valides la fecha nunca
 
-REGLAS IMPORTANTES:
-1. El agricultor puede tener mala ortografía — entiende sus palabras aunque estén mal escritas
-2. RESPETA exactamente los nombres que escribió para campo y trabajadores — no los cambies
-3. Para cultivo: normaliza correctamente (ej: "arandano","arándano","arandanos" → "Arándano", "esparragos" → "Espárrago verde", "palta" → "Palta Hass", "mango" → "Mango Kent")
-4. Para calidad: interpreta (ej: "primera", "1era", "premium" → "Primera (Premium)", "segunda" → "Segunda")
-5. Si dice "hoy" en la fecha → usa ${hoy}
-6. NO cambies ni inventes el nombre del campo — ponlo exactamente como lo escribió
-7. Si falta información pídela amablemente
-
-EXTRAE: cultivo, cantidad_kg(número), campo(EXACTO), calidad, fecha(usa ${hoy} si dice hoy), trabajadores(array), problema.
-
-SOLO JSON: {"mensaje":"texto amable","tipo":"ok|alerta|error","datos":{"cultivo":"","cantidad_kg":0,"campo":"","calidad":"","fecha":"${hoy}","trabajadores":[],"problema":"Ninguno — todo bien"},"campos_faltantes":[],"observacion_ia":"nota","sugerencia_correccion":""}`;
+SOLO JSON: {"mensaje":"texto amable","tipo":"ok|alerta|error","datos":{"cultivo":"","cantidad_kg":0,"campo":"","calidad":"","fecha":"","trabajadores":[],"problema":"Ninguno — todo bien"},"campos_faltantes":[],"observacion_ia":"nota","sugerencia_correccion":""}`;
 
 const PF = `Eres AGROTECH, validador agrícola peruano. Valida el formulario de cosecha.
 IMPORTANTE: NO valides la fecha — eso ya lo hace el sistema. Confía en que la fecha es válida.
@@ -342,7 +339,7 @@ export default function AGROTECH(){
     if(!t){setRespIA({tipo:"alerta",mensaje:"📝 Escribe qué cosechaste. Ej: 'Hoy cosechamos 300 kilos de espárrago en La Loma, calidad primera.'"});return;}
     if(t.length<8){setRespIA({tipo:"alerta",mensaje:"✍️ Necesito más detalle: qué cosechaste, cuánto y en qué campo."});return;}
     setLoadIA(true);setRespIA(null);setDatos(null);
-    const p=await callIA(PN,t);setRespIA(p);
+    const p=await callIA(PN,`Fecha de hoy: ${hoy}. Texto del agricultor: ${t}`);setRespIA(p);
     if(p.datos&&p.tipo!=="error")setDatos(p.datos);
     setLoadIA(false);
   }
@@ -746,7 +743,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
                                 </div>
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                                   <Chip bg={G.moradoC} color={G.morado}>📋 {rs.length} registros</Chip>
-                                  {ha&&<Chip bg={G.verdeC} color={G.verde}>📐 {ha} ha · {Math.round(kg/ha).toLocaleString()} kg/ha</Chip>}
+                                  {ha&&<Chip bg={G.verdeC} color={G.verde}>📐 {typeof ha==="object"?`${ha.valorOrig} ${ha.unidad==="m2"?"m²":"ha"}`:ha+" ha"} · {Math.round(kg/(typeof ha==="object"?ha.ha:ha)).toLocaleString()} kg/ha</Chip>}
                                   {!ha&&<Chip bg={G.doradoC} color={G.dorado}>📐 Sin hectáreas</Chip>}
                                   {prob>0&&<Chip bg={G.rojoC} color={G.rojo}>⚠️ {prob} problemas</Chip>}
                                   <Chip bg={G.azulC} color={G.azul}>🌱 {[...new Set(rs.map(r=>r.cultivo))].join(", ")}</Chip>
@@ -827,8 +824,8 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
             {/* KPI cards clickeables */}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10,marginBottom:14}}>
               {[
-                {id:"hoy",l:"Kg cosechados hoy",v:kpis.totalHoy.toLocaleString(),i:"⚖️",c:G.verde},
-                {id:"total",l:"Total acumulado",v:(kpis.total/1000).toFixed(1)+"t",i:"📦",c:G.azul},
+                {id:"hoy",l:"Kg cosechados hoy",v:kpis.totalHoy>=1000?`${(kpis.totalHoy/1000).toFixed(2)}t (${kpis.totalHoy.toLocaleString()} kg)`:kpis.totalHoy.toLocaleString()+" kg",i:"⚖️",c:G.verde},
+                {id:"total",l:"Total acumulado",v:kpis.total>=1000?(kpis.total/1000).toFixed(2)+"t":kpis.total.toLocaleString()+" kg",i:"📦",c:G.azul},
                 {id:"campos",l:"Campos activos",v:kpis.campos,i:"🌿",c:G.morado},
                 {id:"problemas",l:"Tasa problemas",v:kpis.tasaProb+"%",i:"⚠️",c:kpis.tasaProb>20?G.rojo:G.verde},
               ].map((k,i)=>(
