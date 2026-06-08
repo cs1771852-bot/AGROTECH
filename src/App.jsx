@@ -143,21 +143,25 @@ NUNCA respondas en párrafo seguido. SIEMPRE usa este formato.
 Español peruano, directo y cálido. Máximo 10 líneas.`;
 };
 
-async function callIA(sys, content, maxTok=1500) {
-  try {
-    const res = await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:maxTok,system:sys,messages:[{role:"user",content}]})});
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    const d = await res.json();
-    if(!d.content||!d.content[0]) throw new Error("empty");
-    const raw=d.content[0].text;
-    const cleaned=raw.replace(/```json|```/g,"").trim();
-    if(cleaned.startsWith("{")||cleaned.startsWith("[")) return JSON.parse(cleaned);
-    const fb=cleaned.indexOf("{"), lb=cleaned.lastIndexOf("}");
-    if(fb!==-1&&lb!==-1) return JSON.parse(cleaned.substring(fb,lb+1));
-    throw new Error("No JSON");
-  } catch(e) {
-    return {mensaje:"Error de conexión. Intenta de nuevo.",tipo:"error",datos:{},campos_faltantes:[],alertas:[],predicciones:[]};
+async function callIA(sys, content, maxTok=1500, reintentos=3) {
+  for(let intento=1;intento<=reintentos;intento++){
+    try {
+      const res = await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:maxTok,system:sys,messages:[{role:"user",content}]})});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const d = await res.json();
+      if(!d.content||!d.content[0]) throw new Error("empty");
+      const raw=d.content[0].text.replace(/```json|```/g,"").trim();
+      if(raw.startsWith("{")||raw.startsWith("[")) return JSON.parse(raw);
+      const fb=raw.indexOf("{"),lb=raw.lastIndexOf("}");
+      if(fb!==-1&&lb!==-1) return JSON.parse(raw.substring(fb,lb+1));
+      throw new Error("No JSON");
+    } catch(e) {
+      if(intento===reintentos){
+        return {mensaje:`Sin conexión con la IA. Modo contingencia activo. Intento ${intento}/${reintentos}.`,tipo:"error",datos:{},campos_faltantes:[],alertas:[],predicciones:[]};
+      }
+      await new Promise(r=>setTimeout(r,1000*intento));
+    }
   }
 }
 
@@ -299,6 +303,7 @@ export default function AGROTECH(){
   const [campos,setCampos]=useState({});
   const [kpiModal,setKpiModal]=useState(null);
   const [iaInfo,setIaInfo]=useState(false);
+  const [modoC,setModoC]=useState(false);
   const [bitacora,setBitacora]=useState([]);
   // Análisis de foto
   const [foto,setFoto]=useState(null);
@@ -387,6 +392,7 @@ export default function AGROTECH(){
     const p=await callIA(PF,JSON.stringify({...form,campo:form.lote}));setRespF(p);
     if(p.tipo==="error"){
       setLoadF(false);
+      logBitacora("Jidoka","Registro bloqueado automáticamente — error detectado: "+p.mensaje,"IA");
       return;
     }
     if(p.tipo==="alerta"){
@@ -443,9 +449,8 @@ export default function AGROTECH(){
   function eliminarRegistro(idx){
     if(!window.confirm("¿Eliminar este registro?")) return;
     const nuevos=regs.filter((_,i)=>i!==idx); setRegs(nuevos);
-    try{window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}c
+    try{window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
     logBitacora("Registro","Cosecha: "+reg.cantidad_kg+"kg de "+(reg.cultivo||"cultivo")+" en "+(reg.campo||reg.lote||"campo"),"Humano");
-  }atch{}
     setRegEditando(null); toast("🗑️ Registro eliminado");
   }
 
@@ -689,7 +694,17 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
 
         {/* Footer */}
         <div style={{padding:"8px 5px",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-          {sb&&stOk&&<button onClick={async()=>{if(window.confirm("¿Borrar todos los registros? Esta acción no se puede deshacer.")){try{await window.storage.delete("ag:regs");}catch{}setRegs([]);logBitacora("Sistema","Todos los registros eliminados","Humano");toast("Datos borrados.");}}} style={{width:"100%",background:"rgba(198,40,40,0.15)",border:"1px solid rgba(198,40,40,0.2)",color:"rgba(255,120,120,0.8)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>🗑️ Borrar registros</button>}
+          {sb&&<button onClick={()=>{
+            const data={registros:regs,campos,fecha:new Date().toISOString(),version:"AGROTECH v4.0"};
+            const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+            const url=URL.createObjectURL(blob);
+            const a=document.createElement("a");
+            a.href=url;a.download=`agrotech-backup-${hoy}.json`;a.click();
+            URL.revokeObjectURL(url);
+            logBitacora("Sistema","Backup exportado por el usuario","Humano");
+            toast("✅ Backup descargado");
+          }} style={{width:"100%",background:"rgba(37,99,235,0.1)",border:"1px solid rgba(37,99,235,0.2)",color:"rgba(147,197,253,0.9)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>💾 Exportar backup</button>
+          {stOk&&<button onClick={async()=>{if(window.confirm("¿Borrar todos los registros? Esta acción no se puede deshacer.")){try{await window.storage.delete("ag:regs");}catch{}setRegs([]);logBitacora("Sistema","Todos los registros eliminados","Humano");toast("Datos borrados.");}}} style={{width:"100%",background:"rgba(198,40,40,0.15)",border:"1px solid rgba(198,40,40,0.2)",color:"rgba(255,120,120,0.8)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>🗑️ Borrar registros</button>}
 
         </div>
       </div>
@@ -721,8 +736,11 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
             ))}
           </div>
 
-          {/* KG + IA */}
+          {/* KG + IA + Modo Campo */}
           <div style={{display:"flex",gap:7,alignItems:"center",flexShrink:0}}>
+          <button onClick={()=>setModoC(v=>!v)} title="Modo Campo — alto contraste" style={{background:modoC?"#fbbf24":"rgba(255,255,255,0.1)",border:`1px solid ${modoC?"#fbbf24":"rgba(255,255,255,0.2)"}`,borderRadius:8,padding:"3px 8px",cursor:"pointer",fontSize:12,color:modoC?"#0a1628":"white",fontWeight:600,fontFamily:"inherit"}}>
+            ☀️ {modoC?"Normal":"Campo"}
+          </button>
             <div style={{background:G.doradoC,border:`1px solid ${G.dorado}30`,borderRadius:8,padding:"3px 10px",textAlign:"center"}}>
               <div style={{fontSize:8,color:G.dorado,fontWeight:700}}>KG HOY</div>
               <div style={{fontSize:13,fontWeight:800,color:G.dorado,lineHeight:1}}>{kpis.totalHoy.toLocaleString()}</div>
@@ -1038,6 +1056,10 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
                   <div><label style={lbl}>👷 Trabajadores</label><input type="text" value={form.trabajadores} onChange={e=>sF("trabajadores",e.target.value)} placeholder="Juan, María..." style={inp}/></div>
                   <div><label style={lbl}>📝 Observaciones</label><input type="text" value={form.obs} onChange={e=>sF("obs",e.target.value)} placeholder="Notas..." style={inp}/></div>
+                </div>
+                <div style={{background:"#fffbeb",borderRadius:8,padding:"7px 12px",marginBottom:8,border:"1px solid #d97706",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:14}}>🛡️</span>
+                  <span style={{fontSize:11,color:"#633806",fontWeight:600}}>Poka-Yoke activo — La IA verificará automáticamente antes de guardar</span>
                 </div>
                 <Btn onClick={doForm} loading={loadF} label="🤖 Validar con IA y Guardar" lblLoad="⏳ Validando..." color={G.verde}/>
                 <RespIA r={respF}/>
@@ -1679,43 +1701,6 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
                 ))}
               </div>
             </div>
-
-            {/* ══ ISO 9001 ══ */}
-            <Card>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <div style={{width:40,height:40,borderRadius:10,background:"#dcfce7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>✅</div>
-                <div><div style={{fontWeight:800,fontSize:14,color:G.verde}}>ISO 9001 — Gestión de Calidad</div><div style={{fontSize:11,color:G.suave}}>Sistema de gestión de calidad en procesos agrícolas</div></div>
-                <div style={{marginLeft:"auto",background:G.verdeC,color:G.verde,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>✅ Cumple</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                {[
-                  ["Política de Calidad","AGROTECH garantiza registros precisos, validación IA y mejora continua en cada cosecha registrada."],
-                  ["Objetivos Medibles","Reducir errores de registro en >90% · Tiempo validación <3 seg · Alertas automáticas en tiempo real"],
-                  ["Mejora Continua","Sistema de alertas detecta caídas de rendimiento >20% y propone acciones correctivas inmediatas"],
-                  ["Trazabilidad","100% de cosechas con historial completo: fecha, campo, trabajador, calidad y validación IA"],
-                ].map(([t,d])=>(
-                  <div key={t} style={{background:G.verdeC,borderRadius:9,padding:"10px 12px",border:`1px solid ${G.verde}20`}}>
-                    <div style={{fontSize:11,fontWeight:700,color:G.verde,marginBottom:4}}>✔ {t}</div>
-                    <div style={{fontSize:10,color:G.texto,lineHeight:1.5}}>{d}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{background:"#f0fdf4",borderRadius:8,padding:"10px 14px",border:`1px solid ${G.verde}20`}}>
-                <div style={{fontSize:11,fontWeight:700,color:G.verde,marginBottom:6}}>📊 Indicadores de calidad en tiempo real</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                  {[
-                    ["Registros validados",`${regs.filter(r=>r.tipo==="ok").length}/${regs.length}`,G.verde],
-                    ["Tasa de problemas",`${Math.round(regs.filter(r=>r.problema&&!r.problema.includes("Ninguno")).length/Math.max(regs.length,1)*100)}%`,G.dorado],
-                    ["Campos monitoreados",`${[...new Set(regs.map(r=>r.campo||r.lote).filter(Boolean))].length}`,G.azul],
-                  ].map(([l,v,col])=>(
-                    <div key={l} style={{textAlign:"center",background:"white",borderRadius:8,padding:"8px"}}>
-                      <div style={{fontSize:18,fontWeight:900,color:col}}>{v}</div>
-                      <div style={{fontSize:9,color:G.suave,marginTop:2}}>{l}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Card>
 
             {/* ══ ISO 27001 ══ */}
             <Card>
