@@ -293,6 +293,7 @@ export default function AGROTECH(){
   const [campos,setCampos]=useState({});
   const [kpiModal,setKpiModal]=useState(null);
   const [iaInfo,setIaInfo]=useState(false);
+  const [idiomaVoz,setIdiomaVoz]=useState("es-PE");
   const [modoC,setModoC]=useState(false);
   const [bitacora,setBitacora]=useState([]);
   // Análisis de foto
@@ -333,6 +334,16 @@ export default function AGROTECH(){
     })();
   },[]);
 
+  function isDuplicado(reg){
+    return regs.some(r=>{
+      const mismoDia=r.fecha===reg.fecha;
+      const mismoCampo=(r.campo||r.lote||"").toLowerCase().trim()===(reg.campo||reg.lote||"").toLowerCase().trim();
+      const mismoCultivo=(r.cultivo||"").toLowerCase().trim()===(reg.cultivo||"").toLowerCase().trim();
+      const mismoKg=Number(r.cantidad_kg)===Number(reg.cantidad_kg);
+      return mismoDia&&mismoCampo&&mismoCultivo&&mismoKg;
+    });
+  }
+
   async function addReg(reg){
     const n=[reg,...regs];setRegs(n);
     try{await window.storage.set("ag:regs",JSON.stringify(n.slice(0,5000)));toast("✅ Registro guardado");}
@@ -351,6 +362,9 @@ export default function AGROTECH(){
 
   function confirmar(){
     if(!datos)return;
+    if(isDuplicado(datos)){
+      if(!window.confirm("Ya existe un registro similar para esta fecha, campo y cultivo.\n¿Guardar de todas formas?")) return;
+    }
     addReg({...datos,tipo:respIA?.tipo||"ok",ia_comentario:respIA?.mensaje||"",hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})});
     setTxt("");setRespIA(null);setDatos(null);
   }
@@ -396,7 +410,7 @@ export default function AGROTECH(){
   function iniciarVoz(){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR) return;
-    const r=new SR(); r.lang='es-PE'; r.continuous=false; r.interimResults=false;
+    const r=new SR(); r.lang=idiomaVoz; r.continuous=false; r.interimResults=false;
     recognRef.current=r;
     r.onstart=()=>setEscuchando(true);
     r.onend=()=>setEscuchando(false);
@@ -975,7 +989,19 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
             {tab==="natural"&&(
               <Card>
                 <Titulo icon="💬" text="¿Qué cosechaste hoy?"/>
-                <div style={{position:"relative"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:11,color:G.suave}}>Idioma de voz:</span>
+                    <select value={idiomaVoz} onChange={e=>setIdiomaVoz(e.target.value)} style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:`1px solid ${G.borde}`,background:"white",color:G.texto,fontFamily:"inherit",cursor:"pointer"}}>
+                      <option value="es-PE">🇵🇪 Español (Peru)</option>
+                      <option value="es-ES">🇪🇸 Español (España)</option>
+                      <option value="en-US">🇺🇸 English (US)</option>
+                      <option value="en-GB">🇬🇧 English (UK)</option>
+                      <option value="pt-BR">🇧🇷 Portugues</option>
+                      <option value="fr-FR">🇫🇷 Francais</option>
+                      <option value="de-DE">🇩🇪 Deutsch</option>
+                    </select>
+                  </div>
+                  <div style={{position:"relative"}}>
                   <textarea value={txt} onChange={e=>setTxt(e.target.value)} placeholder="Escribe con tus palabras o usa el micrófono... Ej: Hoy cosechamos 350 kilos de espárrago en La Loma, calidad primera." style={{...inp,minHeight:95,resize:"none",lineHeight:1.6,paddingRight:52}}/>
                   {soportaVoz&&(
                     <button onClick={escuchando?detenerVoz:iniciarVoz} title={escuchando?"Detener":"Hablar para registrar"}
