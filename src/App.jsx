@@ -13,7 +13,7 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
-const API_URL = "/.netlify/functions/claude";
+const API_URL = "/.netlify/functions/claude"; // Deploy: 2026-06-08 04:18:32
 
 const G = {
   sidebar:"#0d1f0d", sidebarItem:"rgba(255,255,255,0.06)", sidebarActive:"rgba(76,175,80,0.25)",
@@ -55,31 +55,35 @@ const makeDemo=()=>{
 };
 const DEMO=makeDemo();
 
-const PN = `Eres AGROTECH, asistente IA agrícola peruana. Extrae datos de cosecha.
+const PN = `Eres AGROTECH, asistente IA agrícola peruana. Extrae y corrige datos de cosecha.
 
 REGLAS:
-1. El agricultor puede escribir mal — entiende igual
-2. Respeta EXACTAMENTE los nombres de campo y trabajadores como los escribió
-3. Normaliza cultivos: "arandano/arándanos" → "Arándano", "esparragos" → "Espárrago verde", "palta" → "Palta Hass"
-4. Normaliza calidad: "primera/1era/premium" → "Primera (Premium)", "segunda/2da" → "Segunda", "tercera/3ra" → "Tercera", "descarte" → "Descarte"
-5. Si dice "hoy" o "esta mañana" → usa la fecha de hoy que viene en el mensaje
-6. tipo "alerta" SOLO si: Primera calidad + plaga/hongo, O Tercera/Descarte + sin problemas
-7. Segunda calidad + cualquier problema o sin problema → tipo "ok" siempre
-8. NO valides la fecha nunca
+1. Entiende mala ortografía — interpreta el significado correcto
+2. NORMALIZA campo: Title Case y sin espacios extra. "la loma"→"La Loma", "TOPGUM"→"Top Gum"
+3. NORMALIZA trabajadores: Title Case. "juan perez","juan peres"→"Juan Perez"
+4. Normaliza cultivos: "arandano"→"Arándano","esparragos"→"Espárrago verde","palta"→"Palta Hass"
+5. Normaliza calidad: "primera/1era/premium"→"Primera (Premium)","segunda/2da"→"Segunda"
+6. Si dice "hoy"→usa la fecha del mensaje
+7. Si el número parece toneladas escritas como kg (ej:"2" para espárrago)→menciona verificar unidades
+8. Alerta SOLO si: Primera+plaga/hongo, O Tercera/Descarte+sin problemas
+9. Segunda calidad→siempre tipo "ok"
+10. NO valides la fecha
 
 SOLO JSON: {"mensaje":"texto amable","tipo":"ok|alerta|error","datos":{"cultivo":"","cantidad_kg":0,"campo":"","calidad":"","fecha":"","trabajadores":[],"problema":"Ninguno — todo bien"},"campos_faltantes":[],"observacion_ia":"nota","sugerencia_correccion":""}`;
 
-const PF = `Eres AGROTECH, validador agrícola peruano. Valida el formulario de cosecha.
-IMPORTANTE: NO valides la fecha — eso ya lo hace el sistema. Confía en que la fecha es válida.
+const PF = `Eres AGROTECH, validador agrícola peruano. Valida el formulario y detecta errores comunes.
+IMPORTANTE: NO valides la fecha — eso ya lo hace el sistema.
 
 Marca tipo "error" SOLO si:
-- Cantidad de kg es imposible (ej: 50000 kg de arándano en un día)
+- Cantidad de kg imposible para ese cultivo en un día (ej: 50000 kg de arándano)
 
-Marca tipo "alerta" SOLO si hay contradicción GRAVE entre calidad y problema:
-- Calidad "Primera (Premium)" con problema "Plaga detectada" o "Hongos/enfermedades"
-- Calidad "Tercera" o "Descarte" con problema "Ninguno — todo bien"
+Marca tipo "alerta" si detectas:
+- Primera (Premium) + plaga/hongo → contradicción grave
+- Tercera o Descarte + "Ninguno — todo bien" → contradicción grave
+- Menos de 5 kg de cualquier cultivo → posible confusión kg/toneladas
+- Más de 5000 kg de arándano o más de 500 kg de fresa → verifica unidades
 
-Todo lo demás es tipo "ok". Segunda calidad con bajo rendimiento es NORMAL.
+Segunda calidad es SIEMPRE normal. No alertes por segunda calidad.
 
 SOLO JSON: {"mensaje":"respuesta amable","tipo":"ok|alerta|error","observacion_ia":"comentario"}`;
 
@@ -295,6 +299,7 @@ export default function AGROTECH(){
   const [campos,setCampos]=useState({});
   const [kpiModal,setKpiModal]=useState(null);
   const [iaInfo,setIaInfo]=useState(false);
+  const [bitacora,setBitacora]=useState([]);
   // Análisis de foto
   const [foto,setFoto]=useState(null);
   const [fotoPreview,setFotoPreview]=useState(null);
@@ -333,6 +338,16 @@ export default function AGROTECH(){
     })();
   },[]);
 
+  function isDuplicado(reg){
+    return regs.some(r=>{
+      const mismoDia=r.fecha===reg.fecha;
+      const mismoCampo=(r.campo||r.lote||"").toLowerCase().trim()===(reg.campo||reg.lote||"").toLowerCase().trim();
+      const mismoCultivo=(r.cultivo||"").toLowerCase().trim()===(reg.cultivo||"").toLowerCase().trim();
+      const mismoKg=Number(r.cantidad_kg)===Number(reg.cantidad_kg);
+      return mismoDia&&mismoCampo&&mismoCultivo&&mismoKg;
+    });
+  }
+
   async function addReg(reg){
     const n=[reg,...regs];setRegs(n);
     try{await window.storage.set("ag:regs",JSON.stringify(n.slice(0,5000)));toast("✅ Registro guardado");}
@@ -351,6 +366,9 @@ export default function AGROTECH(){
 
   function confirmar(){
     if(!datos)return;
+    if(isDuplicado(datos)){
+      if(!window.confirm("⚠️ Ya existe un registro similar para esta fecha, campo y cultivo con los mismos kg.\n¿Quieres guardar este registro de todas formas?")) return;
+    }
     addReg({...datos,tipo:respIA?.tipo||"ok",ia_comentario:respIA?.mensaje||"",hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})});
     setTxt("");setRespIA(null);setDatos(null);
   }
@@ -376,18 +394,13 @@ export default function AGROTECH(){
       const confirmar=window.confirm("⚠️ AGROTECH detectó un problema:\n\n"+(p.mensaje||"Hay datos que no cuadran.")+"\n\n¿Aún así quieres guardar este registro?");
       if(!confirmar)return;
     }
-    addReg({
-      cultivo:form.producto,
-      cantidad_kg:cant,
-      campo:form.lote,
-      calidad:form.calidad,
-      fecha:form.fecha,
-      problema:form.problema,
-      trabajadores:form.trabajadores,
-      tipo:p.tipo||"ok",
-      ia_comentario:p.mensaje,
-      hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})
-    });
+    const regNuevo={cultivo:form.producto,cantidad_kg:cant,campo:form.lote,calidad:form.calidad,fecha:form.fecha,problema:form.problema,trabajadores:form.trabajadores,tipo:p.tipo||"ok",ia_comentario:p.mensaje,hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})};
+    if(isDuplicado(regNuevo)){
+      setLoadF(false);
+      const ok=window.confirm("⚠️ Ya existe un registro similar para esta fecha, campo y cultivo.\n¿Quieres guardar de todas formas?");
+      if(!ok)return;
+    }
+    addReg(regNuevo);
     setForm({producto:"",cantidad:"",calidad:"",lote:"",fecha:hoy,problema:"Ninguno — todo bien",trabajadores:"",obs:""});
     setLoadF(false);
   }
@@ -424,12 +437,15 @@ export default function AGROTECH(){
     const reg={...regs[idx],...formEdit,cantidad_kg:Number(formEdit.cantidad_kg),campo:formEdit.campo,lote:formEdit.campo,tipo};
     const nuevos=[...regs]; nuevos[idx]=reg; setRegs(nuevos);
     try{await window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
-    setRegEditando(null); toast("✅ Registro actualizado");
+    setRegEditando(null); logBitacora("Trazabilidad","Registro editado por el usuario","Humano");
+    toast("✅ Registro actualizado");
   }
   function eliminarRegistro(idx){
     if(!window.confirm("¿Eliminar este registro?")) return;
     const nuevos=regs.filter((_,i)=>i!==idx); setRegs(nuevos);
-    try{window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
+    try{window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}c
+    logBitacora("Registro","Cosecha: "+reg.cantidad_kg+"kg de "+(reg.cultivo||"cultivo")+" en "+(reg.campo||reg.lote||"campo"),"Humano");
+  }atch{}
     setRegEditando(null); toast("🗑️ Registro eliminado");
   }
 
@@ -438,7 +454,8 @@ export default function AGROTECH(){
     if(!campoNombre.trim()||!campoHas||isNaN(Number(campoHas))||Number(campoHas)<=0){
       toast("Ingresa nombre del campo y hectáreas válidas","error"); return;
     }
-    const nuevos={...campos,[campoNombre.trim()]:Number(campoHas)};
+    const nombreNorm=campoNombre.trim().split(" ").map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ");
+    const nuevos={...campos,[nombreNorm]:Number(campoHas)};
     setCampos(nuevos);
     try{await window.storage.set("ag:campos",JSON.stringify(nuevos));}catch{}
     setCampoNombre(""); setCampoHas("");
@@ -500,13 +517,27 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
     setLoadRep(false);
   }
 
+  // ── BITÁCORA ──
+  function logBitacora(componente, accion, responsable="Humano"){
+    const ahora=new Date();
+    const entrada={
+      id:Date.now(),
+      fecha:ahora.toLocaleDateString("es-PE"),
+      hora:ahora.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),
+      componente,
+      accion,
+      responsable
+    };
+    setBitacora(prev=>[entrada,...prev].slice(0,200));
+  }
+
   async function predecirClima(){
     setLoadClima(true);setClimaData(null);
     const cultivos=[...new Set(regs.map(r=>r.cultivo).filter(Boolean))];
     const sys=`Eres AGROTECH. Genera predicción climática aproximada para los próximos 7 días en la costa norte del Perú. SOLO JSON sin texto extra: {"zona":"costa norte del Perú","epoca":"época actual","prediccion_7dias":[{"dia":"Lun","temp_max":25,"temp_min":18,"condicion":"Soleado","probabilidad_lluvia":5,"alerta":"ninguna","impacto":"sin impacto"}],"resumen_semana":"resumen 2 líneas","recomendaciones_climaticas":["rec1","rec2","rec3"],"alerta_general":"ninguna","fenomeno_especial":"ninguno"}`;
     const msg=`Fecha: ${hoy}. Cultivos: ${cultivos.join(", ")||"espárrago, palta"}. Predice clima aproximado para esta semana en la costa norte del Perú.`;
     const res=await callIA(sys,msg,1500);
-    if(res&&res.prediccion_7dias)setClimaData(res);
+    if(res&&res.prediccion_7dias){setClimaData(res);logBitacora("Predicción Climática","IA generó predicción climática para 7 días","IA");}
     else setClimaData({error:"No se pudo generar. Intenta de nuevo."});
     setLoadClima(false);
   }
@@ -595,6 +626,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
     {id:"trabajadores",icon:"👷",label:"Trabajadores"},
     {id:"reporte",icon:"📄",label:"Reporte semanal"},
     {id:"auditoria",icon:"🏅",label:"Auditoría ISO"},
+    {id:"bitacora",icon:"📒",label:"Bitácora"},
   ];
   const NAV_ALL=[...NAV_TOP4,...NAV];
   if(cargando) return(
@@ -657,7 +689,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
 
         {/* Footer */}
         <div style={{padding:"8px 5px",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-          {sb&&stOk&&<button onClick={async()=>{if(window.confirm("¿Borrar todos los registros? Esta acción no se puede deshacer.")){try{await window.storage.delete("ag:regs");}catch{}setRegs([]);toast("Datos borrados.");}}} style={{width:"100%",background:"rgba(198,40,40,0.15)",border:"1px solid rgba(198,40,40,0.2)",color:"rgba(255,120,120,0.8)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>🗑️ Borrar registros</button>}
+          {sb&&stOk&&<button onClick={async()=>{if(window.confirm("¿Borrar todos los registros? Esta acción no se puede deshacer.")){try{await window.storage.delete("ag:regs");}catch{}setRegs([]);logBitacora("Sistema","Todos los registros eliminados","Humano");toast("Datos borrados.");}}} style={{width:"100%",background:"rgba(198,40,40,0.15)",border:"1px solid rgba(198,40,40,0.2)",color:"rgba(255,120,120,0.8)",borderRadius:7,padding:"5px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:5}}>🗑️ Borrar registros</button>}
 
         </div>
       </div>
@@ -835,7 +867,45 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
             })()}
 
             {/* KPI cards clickeables */}
-            <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10,marginBottom:14}}>
+            {/* ══ ANDON — SEMÁFORO DE ESTADO ══ */}
+            {(()=>{
+              const urgentes=regs.filter(r=>r.tipo==="error"&&r.fecha===hoy).length;
+              const alertasHoy=regs.filter(r=>r.tipo==="alerta"&&r.fecha===hoy).length;
+              const sinProblemas=regs.filter(r=>r.tipo==="ok"&&r.fecha===hoy).length;
+              const totalHoyRegs=regs.filter(r=>r.fecha===hoy).length;
+              let estado="verde",titulo="✅ Sistema Operativo",desc="Producción normal — sin incidencias detectadas hoy",col="#16a34a",bg="#dcfce7",borde="#16a34a";
+              if(urgentes>0){estado="rojo";titulo="🔴 ALERTA URGENTE";desc=`${urgentes} incidencia(s) crítica(s) detectada(s) hoy — requiere atención inmediata`;col="#dc2626";bg="#fee2e2";borde="#dc2626";}
+              else if(alertasHoy>0){estado="amarillo";titulo="🟡 Revisar Sistema";desc=`${alertasHoy} alerta(s) leve(s) hoy — monitorear producción`;col="#d97706";bg="#fef3c7";borde="#d97706";}
+              else if(totalHoyRegs===0){estado="gris";titulo="⚪ Sin Actividad Hoy";desc="No se han registrado cosechas hoy";col="#64748b";bg="#f1f5f9";borde="#64748b";}
+              return(
+                <div style={{background:bg,border:`2px solid ${borde}`,borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:16,position:"relative",overflow:"hidden"}}>
+                  {/* Semáforo */}
+                  <div style={{display:"flex",flexDirection:"column",gap:5,flexShrink:0}}>
+                    {["rojo","amarillo","verde"].map(s=>(
+                      <div key={s} style={{width:16,height:16,borderRadius:"50%",background:estado===s?(s==="rojo"?"#dc2626":s==="amarillo"?"#d97706":"#16a34a"):"#e2e8f0",boxShadow:estado===s?`0 0 10px ${s==="rojo"?"#dc2626":s==="amarillo"?"#d97706":"#16a34a"}`:"none",transition:"all 0.3s"}}/>
+                    ))}
+                  </div>
+                  {/* Info */}
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:900,fontSize:15,color:col,marginBottom:3}}>{titulo}</div>
+                    <div style={{fontSize:12,color:col,opacity:0.8}}>{desc}</div>
+                  </div>
+                  {/* Stats rápidos */}
+                  <div style={{display:"flex",gap:10,flexShrink:0}}>
+                    {[["🔴",urgentes,"Urgente"],["🟡",alertasHoy,"Alerta"],["🟢",sinProblemas,"Normal"]].map(([em,n,l])=>(
+                      <div key={l} style={{textAlign:"center",background:"rgba(255,255,255,0.7)",borderRadius:8,padding:"5px 10px"}}>
+                        <div style={{fontSize:16,fontWeight:900,color:col}}>{n}</div>
+                        <div style={{fontSize:9,color:"#64748b"}}>{em} {l}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Pulso animado si hay urgente */}
+                  {urgentes>0&&<div style={{position:"absolute",top:0,left:0,right:0,bottom:0,border:"3px solid #dc2626",borderRadius:14,animation:"pulse 1s infinite",pointerEvents:"none"}}/>}
+                </div>
+              );
+            })()}
+
+                        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10,marginBottom:14}}>
               {[
                 {id:"hoy",l:"Kg cosechados hoy",v:kpis.totalHoy>=1000?`${(kpis.totalHoy/1000).toFixed(2)}t (${kpis.totalHoy.toLocaleString()} kg)`:kpis.totalHoy.toLocaleString()+" kg",i:"⚖️",c:G.verde},
                 {id:"total",l:"Total acumulado",v:kpis.total>=1000?(kpis.total/1000).toFixed(2)+"t":kpis.total.toLocaleString()+" kg",i:"📦",c:G.azul},
@@ -1838,6 +1908,74 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
                     <div style={{background:col,color:"white",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,flexShrink:0}}>{ver}</div>
                     <div style={{fontSize:9,color:G.suave,flexShrink:0,marginTop:2}}>{fecha}</div>
                     <div style={{fontSize:11,color:G.texto}}>{desc}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>)}
+
+          {vista==="bitacora"&&(<>
+            <div style={{background:"linear-gradient(135deg,#0a1628,#1e3a5f)",borderRadius:12,padding:"16px 20px",marginBottom:12,color:"white"}}>
+              <div style={{fontWeight:900,fontSize:16,marginBottom:4,fontFamily:"Arial Black,sans-serif"}}>📒 Bitácora del Sistema</div>
+              <div style={{fontSize:12,opacity:0.6}}>Registro histórico inmutable de todas las acciones — Humano e IA</div>
+              <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                <div style={{background:"rgba(34,197,94,0.2)",borderRadius:20,padding:"3px 12px",fontSize:11,color:"#86efac"}}>✅ Trazabilidad ISO 9001</div>
+                <div style={{background:"rgba(59,130,246,0.2)",borderRadius:20,padding:"3px 12px",fontSize:11,color:"#93c5fd"}}>🔒 Audit Trail ISO 27001</div>
+              </div>
+            </div>
+
+            <Card>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <Titulo icon="📋" text={`Registro de acciones (${bitacora.length})`} color={G.azul}/>
+                {bitacora.length>0&&<button onClick={()=>setBitacora([])} style={{background:G.rojoC,border:"none",color:G.rojo,borderRadius:7,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>Limpiar</button>}
+              </div>
+
+              {bitacora.length===0?(
+                <div style={{textAlign:"center",padding:"30px 0",color:G.suave}}>
+                  <div style={{fontSize:32,marginBottom:8}}>📒</div>
+                  <div style={{fontSize:13}}>Aún no hay acciones registradas</div>
+                  <div style={{fontSize:11,marginTop:4}}>Las acciones aparecerán aquí automáticamente</div>
+                </div>
+              ):(
+                <div>
+                  {/* Header tabla */}
+                  <div style={{display:"grid",gridTemplateColumns:"0.8fr 0.6fr 1.5fr 2fr 0.7fr",gap:6,padding:"6px 10px",background:G.bg,borderRadius:7,marginBottom:6}}>
+                    {["Fecha","Hora","Componente","Acción","Responsable"].map(h=>(
+                      <div key={h} style={{fontSize:9,fontWeight:700,color:G.suave,textTransform:"uppercase",letterSpacing:"0.5px"}}>{h}</div>
+                    ))}
+                  </div>
+                  {/* Filas */}
+                  {bitacora.map((entry,i)=>(
+                    <div key={entry.id} style={{display:"grid",gridTemplateColumns:"0.8fr 0.6fr 1.5fr 2fr 0.7fr",gap:6,padding:"7px 10px",borderRadius:7,marginBottom:4,background:i%2===0?"white":G.bg,border:`1px solid ${G.borde}`}}>
+                      <div style={{fontSize:10,color:G.suave}}>{entry.fecha}</div>
+                      <div style={{fontSize:10,color:G.suave,fontFamily:"monospace"}}>{entry.hora}</div>
+                      <div style={{fontSize:10,fontWeight:600,color:G.azul}}>{entry.componente}</div>
+                      <div style={{fontSize:10,color:G.texto,lineHeight:1.4}}>{entry.accion}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <div style={{width:6,height:6,borderRadius:"50%",background:entry.responsable==="IA"?G.morado:G.verde,flexShrink:0}}/>
+                        <div style={{fontSize:9,fontWeight:700,color:entry.responsable==="IA"?G.morado:G.verde}}>{entry.responsable}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Leyenda */}
+            <Card>
+              <Titulo icon="ℹ️" text="¿Qué registra la bitácora?" color={G.azul}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+                {[
+                  ["🌿 Registro de cosecha","Cada vez que el agricultor registra una cosecha"],
+                  ["✏️ Edición de registro","Cuando se modifica un dato existente"],
+                  ["🚨 Análisis de alertas","Cuando la IA analiza el historial completo"],
+                  ["🌤️ Predicción climática","Cuando la IA genera predicción del clima"],
+                  ["🌾 Gestión de campos","Cuando se agrega o modifica un campo"],
+                  ["🗑️ Borrado de datos","Cuando el usuario elimina registros"],
+                ].map(([t,d])=>(
+                  <div key={t} style={{background:G.bg,borderRadius:8,padding:"8px 10px",border:`1px solid ${G.borde}`}}>
+                    <div style={{fontSize:11,fontWeight:600,color:G.texto,marginBottom:2}}>{t}</div>
+                    <div style={{fontSize:10,color:G.suave}}>{d}</div>
                   </div>
                 ))}
               </div>
