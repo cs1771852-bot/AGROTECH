@@ -295,7 +295,10 @@ export default function AGROTECH(){
   const [iaInfo,setIaInfo]=useState(false);
   const [idiomaVoz,setIdiomaVoz]=useState("es-PE");
   const [modoC,setModoC]=useState(false);
-  const [bitacora,setBitacora]=useState([]);
+  const [bitacora,setBitacora]=useState(()=>{
+    try{const s=window.storage?.getSync?.("ag:bitacora");if(s)return JSON.parse(s);}catch{}
+    return [];
+  });
   // Análisis de foto
   const [foto,setFoto]=useState(null);
   const [fotoPreview,setFotoPreview]=useState(null);
@@ -346,6 +349,7 @@ export default function AGROTECH(){
 
   async function addReg(reg){
     const n=[reg,...regs];setRegs(n);
+    logBitacora("Registro","Cosecha guardada: "+(reg.cantidad_kg||0)+"kg de "+(reg.cultivo||"cultivo")+" en "+(reg.campo||reg.lote||"campo"),"Humano");
     try{await window.storage.set("ag:regs",JSON.stringify(n.slice(0,5000)));toast("✅ Registro guardado");}
     catch{toast("✅ Registro guardado");}
   }
@@ -402,6 +406,7 @@ export default function AGROTECH(){
       ia_comentario:p.mensaje,
       hora:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})
     });
+    logBitacora("Formulario","Cosecha registrada via formulario guiado","Humano");
     setForm({producto:"",cantidad:"",calidad:"",lote:"",fecha:hoy,problema:"Ninguno — todo bien",trabajadores:"",obs:""});
     setLoadF(false);
   }
@@ -516,7 +521,12 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
 
   function logBitacora(componente,accion,responsable="Humano"){
     const ahora=new Date();
-    setBitacora(prev=>[{id:Date.now(),fecha:ahora.toLocaleDateString("es-PE"),hora:ahora.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),componente,accion,responsable},...prev].slice(0,200));
+    const entrada={id:Date.now(),fecha:ahora.toLocaleDateString("es-PE"),hora:ahora.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),componente,accion,responsable};
+    setBitacora(prev=>{
+      const nuevas=[entrada,...prev].slice(0,200);
+      try{window.storage.set("ag:bitacora",JSON.stringify(nuevas));}catch{}
+      return nuevas;
+    });
   }
 
   async function borrarRegistros(){
@@ -545,7 +555,10 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
     const sys=`Eres AGROTECH. Genera predicción climática aproximada para los próximos 7 días en la costa norte del Perú. SOLO JSON sin texto extra: {"zona":"costa norte del Perú","epoca":"época actual","prediccion_7dias":[{"dia":"Lun","temp_max":25,"temp_min":18,"condicion":"Soleado","probabilidad_lluvia":5,"alerta":"ninguna","impacto":"sin impacto"}],"resumen_semana":"resumen 2 líneas","recomendaciones_climaticas":["rec1","rec2","rec3"],"alerta_general":"ninguna","fenomeno_especial":"ninguno"}`;
     const msg=`Fecha: ${hoy}. Cultivos: ${cultivos.join(", ")||"espárrago, palta"}. Predice clima aproximado para esta semana en la costa norte del Perú.`;
     const res=await callIA(sys,msg,1500);
-    if(res&&res.prediccion_7dias)setClimaData(res);
+    if(res&&res.prediccion_7dias){
+      setClimaData(res);
+      logBitacora("Prediccion Climatica","IA genero prediccion 7 dias","IA");
+    }
     else setClimaData({error:"No se pudo generar. Intenta de nuevo."});
     setLoadClima(false);
   }
@@ -1850,7 +1863,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
           {vista==="bitacora"&&(<>
             <div style={{background:"linear-gradient(135deg,#0a1628,#1e3a5f)",borderRadius:12,padding:"16px 20px",marginBottom:12,color:"white"}}>
               <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>📒 Bitácora del Sistema</div>
-              <div style={{fontSize:12,opacity:0.6}}>Registro histórico de todas las acciones — Audit Trail ISO 27001</div>
+              <div style={{fontSize:12,opacity:0.6}}>Registro histórico de todas las acciones del sistema</div>
             </div>
             <Card>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
