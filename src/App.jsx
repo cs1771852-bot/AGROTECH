@@ -501,14 +501,18 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
   async function doRep(periodo){
     const p=periodo||periodoRep; setLoadRep(true); setRep(null);
     const ahora=new Date();
-    const filtrados=regs.filter(r=>{
+    let filtrados=regs.filter(r=>{
       if(!r.fecha) return false;
       const diff=Math.floor((ahora-new Date(r.fecha+"T12:00:00"))/86400000);
-      if(p==="hoy") return diff===0;
-      if(p==="semana") return diff<=7;
-      return diff<=30;
+      if(p==="hoy") return diff>=-1 && diff<=0;
+      if(p==="semana") return diff>=-1 && diff<=7;
+      return diff>=-1 && diff<=30;
     });
-    if(filtrados.length===0){setRep({error:"No hay registros para este período."});setLoadRep(false);return;}
+    // Si no hay datos en el período exacto, usar todos los registros disponibles
+    if(filtrados.length===0 && regs.length>0){
+      filtrados=regs.slice(0,50);
+    }
+    if(filtrados.length===0){setRep({error:"Aún no tienes registros de cosecha. Registra al menos una cosecha para generar el informe."});setLoadRep(false);return;}
     const totalKg=filtrados.reduce((s,r)=>s+Number(r.cantidad_kg||0),0);
     const labels={hoy:"de hoy",semana:"de los últimos 7 días",mes:"del último mes"};
     const lineas=filtrados.map(r=>r.cultivo+"|"+(r.campo||r.lote)+"|"+r.fecha+"|"+r.cantidad_kg+"kg|"+r.calidad+"|"+r.problema).join(", ");
@@ -1661,36 +1665,103 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
           })()}
 
           {vista==="reporte"&&(<>
-            <div style={{background:`linear-gradient(135deg,${G.dorado},#e0a000)`,borderRadius:12,padding:"16px 20px",marginBottom:12,color:"white",boxShadow:`0 4px 14px ${G.dorado}30`}}>
-              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
-                <div style={{fontSize:32}}>📄</div>
-                <div style={{flex:1}}><div style={{fontWeight:800,fontSize:15}}>Reporte AGROTECH</div><div style={{fontSize:12,opacity:0.8,marginTop:1}}>{regs.length} registros disponibles</div></div>
+            <div style={{background:`linear-gradient(135deg,${G.texto},#1e293b)`,borderRadius:12,padding:"18px 22px",marginBottom:12,color:"white"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,opacity:0.6,textTransform:"uppercase",letterSpacing:"1px",fontWeight:600,marginBottom:3}}>Centro de Reportes</div>
+                <div style={{fontWeight:800,fontSize:17,letterSpacing:"-0.3px"}}>Informe de Producción</div>
+                <div style={{fontSize:11,opacity:0.6,marginTop:2}}>{regs.length} registros disponibles para análisis</div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:10}}>
-                {[{id:"hoy",icon:"📅",label:"Hoy"},{id:"semana",icon:"📆",label:"Esta semana"},{id:"mes",icon:"🗓️",label:"Este mes"}].map(p=>(
-                  <button key={p.id} onClick={()=>{setPeriodoRep(p.id);setRep(null);}} style={{background:periodoRep===p.id?"white":"rgba(255,255,255,0.15)",color:periodoRep===p.id?G.dorado:"white",border:"1.5px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"7px 5px",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                    <span>{p.icon}</span>{p.label}
+                {[{id:"hoy",label:"Hoy"},{id:"semana",label:"7 días"},{id:"mes",label:"30 días"}].map(p=>(
+                  <button key={p.id} onClick={()=>{setPeriodoRep(p.id);setRep(null);}} style={{background:periodoRep===p.id?"white":"rgba(255,255,255,0.08)",color:periodoRep===p.id?G.texto:"rgba(255,255,255,0.7)",border:`1px solid ${periodoRep===p.id?"white":"rgba(255,255,255,0.15)"}`,borderRadius:8,padding:"8px 5px",fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                    {p.label}
                   </button>
                 ))}
               </div>
               <button onClick={()=>doRep(periodoRep)} disabled={loadRep} style={{width:"100%",background:loadRep?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.25)",border:"1.5px solid rgba(255,255,255,0.4)",color:"white",borderRadius:9,padding:"10px",fontFamily:"inherit",fontSize:13,fontWeight:800,cursor:loadRep?"not-allowed":"pointer"}}>
-                {loadRep?"⏳ Generando reporte...":"🔄 Generar reporte"}
+                {loadRep?"Generando informe...":"Generar informe"}
               </button>
             </div>
             {rep?.error&&<div style={{background:G.rojoC,borderRadius:10,padding:"14px 16px",marginBottom:11,border:`1px solid ${G.rojo}25`,display:"flex",gap:10}}><div style={{fontSize:20}}>❌</div><div><div style={{fontWeight:700,color:G.rojo,fontSize:13,marginBottom:3}}>Error al generar</div><div style={{fontSize:13,color:G.texto}}>{rep.error}</div></div></div>}
-            {!loadRep&&!rep&&<div style={{textAlign:"center",padding:50,color:"#aaa",background:"white",borderRadius:11}}><div style={{fontSize:44,marginBottom:9}}>📊</div><div style={{fontWeight:600,fontSize:14,color:"#555",marginBottom:5}}>Reporte visual de la semana</div><div style={{fontSize:13}}>La IA genera un informe completo con KPIs, logros y recomendaciones.</div></div>}
+            {!loadRep&&!rep&&<div style={{textAlign:"center",padding:"44px 30px",color:G.suave,background:"white",borderRadius:12,border:`1px solid ${G.borde}`}}><div style={{fontSize:13,fontWeight:600,color:G.texto,marginBottom:5}}>Selecciona un período y genera tu informe</div><div style={{fontSize:12,lineHeight:1.5,maxWidth:340,margin:"0 auto"}}>El sistema analiza tus registros y produce un informe ejecutivo con KPIs, producción por cultivo, estado de campos y recomendaciones.</div></div>}
             {rep&&!rep.error&&(()=>{
               const calC={"Excelente":G.verde,"Buena":"#43a047","Regular":G.dorado,"Difícil":G.rojo}[rep.calificacion_semana]||G.verde;
-              const priC={"Alta":G.rojo,"Media":G.naranja};
+              const priC={"Alta":G.rojo,"Media":G.dorado};
+              const estC={"Optimo":G.verde,"Óptimo":G.verde,"Revisar":G.dorado,"Urgente":G.rojo};
+              const tendIcon={"subiendo":"▲","estable":"●","bajando":"▼"};
+              const tendCol={"subiendo":G.verde,"estable":G.suave,"bajando":G.rojo};
+              const periodLabel={hoy:"Hoy",semana:"Últimos 7 días",mes:"Último mes"}[periodoRep]||"Período";
               return(<>
-                <div style={{background:`linear-gradient(135deg,${calC},${calC}cc)`,borderRadius:12,padding:"18px 22px",marginBottom:11,color:"white",display:"flex",alignItems:"center",gap:14}}>
-                  <div style={{fontSize:42}}>{rep.emoji_semana||"🌿"}</div>
-                  <div><div style={{fontSize:10,opacity:0.7,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>Calificación de la semana</div><div style={{fontWeight:900,fontSize:22}}>{rep.calificacion_semana}</div><div style={{fontSize:13,opacity:0.85,marginTop:3,lineHeight:1.4}}>{rep.resumen_ejecutivo}</div></div>
+                {/* Encabezado ejecutivo */}
+                <div style={{background:"white",borderRadius:12,padding:"18px 22px",marginBottom:12,border:`1px solid ${G.borde}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10}}>
+                    <div>
+                      <div style={{fontSize:10,color:G.suave,textTransform:"uppercase",letterSpacing:"1px",fontWeight:600,marginBottom:3}}>Informe de Producción · {periodLabel}</div>
+                      <div style={{fontSize:18,fontWeight:800,color:G.texto,letterSpacing:"-0.3px"}}>Reporte Ejecutivo AGROTECH</div>
+                      <div style={{fontSize:11,color:G.suave,marginTop:2}}>Generado el {new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"long",year:"numeric"})}</div>
+                    </div>
+                    <div style={{textAlign:"right",borderLeft:`3px solid ${calC}`,paddingLeft:14}}>
+                      <div style={{fontSize:9,color:G.suave,textTransform:"uppercase",letterSpacing:"0.5px",fontWeight:600}}>Calificación</div>
+                      <div style={{fontSize:20,fontWeight:900,color:calC,lineHeight:1.1}}>{rep.calificacion_semana}</div>
+                    </div>
+                  </div>
+                  <div style={{fontSize:13,color:G.texto,lineHeight:1.6,paddingTop:12,borderTop:`1px solid ${G.borde}`}}>{rep.resumen_ejecutivo}</div>
                 </div>
-                {rep.kpis?.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:11}}>{rep.kpis.map((k,i)=><div key={i} style={{background:"white",borderRadius:10,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",border:`1px solid ${G.borde}`,borderLeft:`4px solid ${{verde:G.verde,rojo:G.rojo,amarillo:G.dorado}[k.color]||G.verde}`}}><div style={{fontSize:22}}>{k.icono}</div><div><div style={{fontWeight:800,fontSize:15,color:{verde:G.verde,rojo:G.rojo,amarillo:G.dorado}[k.color]||G.verde,lineHeight:1}}>{k.valor}</div><div style={{fontSize:10,color:G.suave,marginTop:2}}>{k.label}</div></div></div>)}</div>}
-                {rep.logros?.length>0&&<Card><Titulo icon="🏆" text="Logros de la semana"/><div style={{display:"flex",flexDirection:"column",gap:6}}>{rep.logros.map((l,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",background:G.verdeC,borderRadius:7,padding:"7px 11px"}}><div style={{width:18,height:18,borderRadius:"50%",background:G.verde,color:"white",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div><div style={{fontSize:13,color:G.texto}}>{l}</div></div>)}</div></Card>}
-                {rep.recomendaciones?.length>0&&<Card><Titulo icon="💡" text="Recomendaciones"/>{rep.recomendaciones.map((r,i)=><div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",padding:"7px 0",borderBottom:i<rep.recomendaciones.length-1?`1px solid ${G.borde}`:"none"}}><Chip bg={(priC[r.prioridad]||G.dorado)+"20"} color={priC[r.prioridad]||G.dorado} style={{flexShrink:0}}>{r.prioridad}</Chip><div><div style={{fontSize:13,fontWeight:600,color:G.texto}}>{r.accion}</div><div style={{fontSize:10,color:"#aaa",marginTop:1}}>Campo: {r.campo}</div></div></div>)}</Card>}
-                {rep.proyeccion&&<div style={{background:`linear-gradient(135deg,${G.morado},#9c27b0)`,borderRadius:11,padding:"13px 16px",color:"white"}}><div style={{fontWeight:700,fontSize:11,opacity:0.7,marginBottom:4}}>🔮 Proyección próxima semana</div><div style={{fontSize:13,lineHeight:1.6}}>{rep.proyeccion}</div></div>}
+
+                {/* KPIs en tabla limpia */}
+                {rep.kpis?.length>0&&<div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:1,marginBottom:12,background:G.borde,borderRadius:10,overflow:"hidden",border:`1px solid ${G.borde}`}}>{rep.kpis.map((k,i)=>{const kc={verde:G.verde,rojo:G.rojo,amarillo:G.dorado}[k.color]||G.texto;return(<div key={i} style={{background:"white",padding:"14px 16px"}}><div style={{fontSize:9,color:G.suave,textTransform:"uppercase",letterSpacing:"0.5px",fontWeight:600,marginBottom:5}}>{k.label}</div><div style={{fontWeight:800,fontSize:20,color:kc,lineHeight:1}}>{k.valor}</div></div>);})}</div>}
+
+                {/* Producción por cultivo - tabla profesional */}
+                {rep.cultivos?.length>0&&<div style={{background:"white",borderRadius:12,marginBottom:12,border:`1px solid ${G.borde}`,overflow:"hidden"}}>
+                  <div style={{padding:"13px 18px",borderBottom:`1px solid ${G.borde}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:G.texto}}>Producción por Cultivo</div>
+                    <div style={{fontSize:10,color:G.suave}}>{rep.cultivos.length} cultivos</div>
+                  </div>
+                  <div style={{padding:"4px 0"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1.3fr 1fr",gap:8,padding:"6px 18px",fontSize:9,color:G.suave,textTransform:"uppercase",letterSpacing:"0.5px",fontWeight:600}}>
+                      <div>Cultivo</div><div style={{textAlign:"right"}}>Total kg</div><div>Calidad</div><div style={{textAlign:"center"}}>Tendencia</div>
+                    </div>
+                    {rep.cultivos.map((cv,i)=>(
+                      <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1.3fr 1fr",gap:8,padding:"10px 18px",alignItems:"center",borderTop:`1px solid ${G.bg}`}}>
+                        <div><div style={{fontSize:13,fontWeight:600,color:G.texto}}>{cv.nombre}</div>{cv.observacion&&<div style={{fontSize:10,color:G.suave,marginTop:1}}>{cv.observacion}</div>}</div>
+                        <div style={{textAlign:"right",fontWeight:700,fontSize:13,color:G.texto}}>{Number(cv.kg_total).toLocaleString()}</div>
+                        <div><span style={{fontSize:11,color:G.suave}}>{cv.calidad_predominante}</span></div>
+                        <div style={{textAlign:"center",fontSize:13,fontWeight:700,color:tendCol[cv.tendencia]||G.suave}}>{tendIcon[cv.tendencia]||"●"} <span style={{fontSize:10,fontWeight:500}}>{cv.tendencia}</span></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>}
+
+                {/* Estado de campos */}
+                {rep.campos?.length>0&&<div style={{background:"white",borderRadius:12,marginBottom:12,border:`1px solid ${G.borde}`,overflow:"hidden"}}>
+                  <div style={{padding:"13px 18px",borderBottom:`1px solid ${G.borde}`,fontWeight:700,fontSize:13,color:G.texto}}>Estado de Campos</div>
+                  {rep.campos.map((cp,i)=>{const ec=estC[cp.estado]||G.suave;return(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderTop:i>0?`1px solid ${G.bg}`:"none"}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:ec,flexShrink:0}}/>
+                      <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:G.texto}}>{cp.nombre}</div><div style={{fontSize:10,color:G.suave,marginTop:1}}>{cp.comentario}</div></div>
+                      <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:13,fontWeight:700,color:G.texto}}>{Number(cp.kg_semana).toLocaleString()} kg</div><div style={{fontSize:10,color:cp.incidencias>0?G.rojo:G.suave,marginTop:1}}>{cp.incidencias} incidencia{cp.incidencias!==1?"s":""}</div></div>
+                      <div style={{background:ec+"15",color:ec,fontSize:10,fontWeight:700,padding:"3px 9px",borderRadius:6,flexShrink:0,textTransform:"uppercase",letterSpacing:"0.3px"}}>{cp.estado}</div>
+                    </div>
+                  );})}
+                </div>}
+
+                {/* Logros y Recomendaciones lado a lado */}
+                <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:12}}>
+                  {rep.logros?.length>0&&<div style={{background:"white",borderRadius:12,border:`1px solid ${G.borde}`,padding:"14px 18px"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:G.texto,marginBottom:10}}>Logros del período</div>
+                    {rep.logros.map((l,i)=>(<div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",marginBottom:8}}><div style={{color:G.verde,fontSize:13,flexShrink:0,marginTop:1}}>✓</div><div style={{fontSize:12,color:G.texto,lineHeight:1.4}}>{l}</div></div>))}
+                  </div>}
+                  {rep.recomendaciones?.length>0&&<div style={{background:"white",borderRadius:12,border:`1px solid ${G.borde}`,padding:"14px 18px"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:G.texto,marginBottom:10}}>Acciones recomendadas</div>
+                    {rep.recomendaciones.map((r,i)=>{const pc=priC[r.prioridad]||G.dorado;return(<div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",marginBottom:10}}><div style={{background:pc+"18",color:pc,fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:5,flexShrink:0,marginTop:1,textTransform:"uppercase"}}>{r.prioridad}</div><div><div style={{fontSize:12,fontWeight:600,color:G.texto,lineHeight:1.4}}>{r.accion}</div>{r.campo&&<div style={{fontSize:10,color:G.suave,marginTop:1}}>{r.campo}</div>}</div></div>);})}
+                  </div>}
+                </div>
+
+                {/* Proyección */}
+                {rep.proyeccion&&<div style={{background:G.texto,borderRadius:12,padding:"16px 20px",color:"white"}}>
+                  <div style={{fontSize:10,opacity:0.6,textTransform:"uppercase",letterSpacing:"1px",fontWeight:600,marginBottom:6}}>Proyección · Próximo período</div>
+                  <div style={{fontSize:13,lineHeight:1.6,opacity:0.95}}>{rep.proyeccion}</div>
+                </div>}
               </>);
             })()}
           </>)}
@@ -1787,7 +1858,6 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
                 ))}
               </div>
             </Card>
-          </>)}
 
             <Card>
               <div style={{background:"linear-gradient(135deg,#0a1628,#1e3a5f)",borderRadius:10,padding:"12px 16px",marginBottom:12,color:"white"}}>
@@ -1858,6 +1928,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
                 </div>
               </div>
             </Card>
+          </>)}
 
           {/* ══ BITÁCORA ══ */}
           {vista==="bitacora"&&(<>
