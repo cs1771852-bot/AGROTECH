@@ -26,12 +26,7 @@ const G = {
 const CULTIVOS = ["Espárrago verde","Espárrago blanco","Palta Hass","Arándano","Uva Red Globe","Uva Thompson","Mango Kent","Mango Edward","Mandarina","Naranja","Maracuyá","Quinua","Papa","Cebolla","Tomate","Ají amarillo","Otro cultivo"];
 const PROBLEMAS = ["Ninguno — todo bien","Plaga detectada","Hongos o enfermedad","Daño por granizo","Bajo rendimiento","Falla de riego","Clima adverso","Falta de personal","Otro problema"];
 const hoy=(()=>{
-  const d=new Date();
-  // Ajustar a zona horaria de Perú (UTC-5)
-  const peruOffset=-5*60;
-  const localOffset=d.getTimezoneOffset();
-  const peruDate=new Date(d.getTime()+(localOffset+peruOffset)*60000*-1);
-  // Usar fecha local del navegador del usuario (más confiable)
+  // Fecha local del navegador (la más confiable para el usuario)
   const local=new Date();
   return `${local.getFullYear()}-${String(local.getMonth()+1).padStart(2,"0")}-${String(local.getDate()).padStart(2,"0")}`;
 })();
@@ -90,8 +85,13 @@ SOLO JSON: {"alertas":[{"nivel":"critica|alta|media","campo":"c","cultivo":"c","
 const PP = `Eres AGROTECH, sistema predictivo agrícola. Predice próximos 7 días.
 SOLO JSON: {"predicciones":[{"campo":"c","cultivo":"c","kg_estimado":0,"confianza":"alta|media|baja","tendencia":"subiendo|estable|bajando","recomendacion":"r"}],"recomendacion_general":"r","kpi_proyectado":0}`;
 
-const PR = `Eres AGROTECH, generador de reportes agrícolas peruanos.
-SOLO JSON: {"resumen_ejecutivo":"2 líneas","calificacion_semana":"Excelente|Buena|Regular|Difícil","emoji_semana":"e","kpis":[{"label":"l","valor":"v","icono":"i","color":"verde|rojo|amarillo"}],"cultivos":[{"nombre":"n","kg_total":0,"calidad_predominante":"Primera","tendencia":"subiendo|estable|bajando","observacion":"o"}],"campos":[{"nombre":"n","estado":"Optimo|Revisar|Urgente","kg_semana":0,"incidencias":0,"comentario":"c"}],"logros":["l1","l2"],"recomendaciones":[{"prioridad":"Alta|Media","accion":"a","campo":"c"}],"proyeccion":"p"}`;
+const PR = `Eres AGROTECH, generador de reportes agricolas peruanos profesionales.
+Analiza los datos de cosecha que te doy y genera un informe ejecutivo completo.
+Responde UNICAMENTE con JSON valido, sin texto antes ni despues, sin markdown.
+Calcula los kg_total reales sumando los registros de cada cultivo.
+Identifica la tendencia comparando registros recientes vs antiguos.
+Formato EXACTO:
+{"resumen_ejecutivo":"2 lineas con lo mas importante del periodo","calificacion_semana":"Excelente o Buena o Regular o Dificil","kpis":[{"label":"Produccion total","valor":"1,250 kg","color":"verde"},{"label":"Cultivos activos","valor":"3","color":"verde"},{"label":"Incidencias","valor":"2","color":"amarillo"},{"label":"Rendimiento","valor":"Alto","color":"verde"}],"cultivos":[{"nombre":"Esparrago","kg_total":850,"calidad_predominante":"Primera","tendencia":"subiendo","observacion":"texto breve"}],"campos":[{"nombre":"La Loma","estado":"Optimo","kg_semana":450,"incidencias":0,"comentario":"texto breve"}],"logros":["logro 1","logro 2"],"recomendaciones":[{"prioridad":"Alta","accion":"texto de la accion","campo":"nombre campo"}],"proyeccion":"texto sobre el proximo periodo"}`;
 
 const PPL = `Eres AGROTECH, experto en fitopatología peruana. Analiza síntomas de cultivos.
 SOLO JSON: {"plaga_probable":"nombre","certeza":"Alta|Media|Baja","descripcion":"2 líneas","sintomas_confirmacion":["s1","s2","s3"],"dano_potencial":"d","tratamiento_organico":{"producto":"p","dosis":"d","frecuencia":"f","momento":"m"},"tratamiento_quimico":{"producto":"p","ingrediente_activo":"ia","dosis":"d","precaucion":"p"},"medidas_culturales":["m1","m2"],"urgencia":"Inmediata|Esta semana|Monitorear","alerta_vecinos":false}`;
@@ -238,6 +238,26 @@ function RespIA({r}){
   );
 }
 
+// Storage con fallback a localStorage (persistencia garantizada)
+const storage = {
+  async set(key, value){
+    try{ if(window.storage&&window.storage.set){ await window.storage.set(key, value); } }catch(e){}
+    try{ localStorage.setItem(key, value); }catch(e){}
+  },
+  async get(key){
+    try{ if(window.storage&&window.storage.get){ const v=await window.storage.get(key); if(v!=null) return v; } }catch(e){}
+    try{ return localStorage.getItem(key); }catch(e){ return null; }
+  },
+  getSync(key){
+    try{ const v=localStorage.getItem(key); if(v!=null) return v; }catch(e){}
+    return null;
+  },
+  async delete(key){
+    try{ if(window.storage&&window.storage.delete){ await window.storage.delete(key); } }catch(e){}
+    try{ localStorage.removeItem(key); }catch(e){}
+  }
+};
+
 export default function AGROTECH(){
   const [vista,setVista]=useState("dashboard");
   const [sb,setSb]=useState(true);
@@ -296,7 +316,7 @@ export default function AGROTECH(){
   const [idiomaVoz,setIdiomaVoz]=useState("es-PE");
   const [modoC,setModoC]=useState(false);
   const [bitacora,setBitacora]=useState(()=>{
-    try{const s=window.storage?.getSync?.("ag:bitacora");if(s)return JSON.parse(s);}catch{}
+    try{const s=storage.getSync("ag:bitacora");if(s)return JSON.parse(s);}catch{}
     return [];
   });
   // Análisis de foto
@@ -331,8 +351,8 @@ export default function AGROTECH(){
   useEffect(()=>{if(vista==="prediccion"&&!preds.length)doPreds();},[vista]);
   useEffect(()=>{
     (async()=>{
-      try{const r=await window.storage.get("ag:regs");if(r?.value){const g=JSON.parse(r.value);if(Array.isArray(g)&&g.length>0)setRegs(g);}}catch{}
-      try{const r=await window.storage.get("ag:campos");if(r?.value)setCampos(JSON.parse(r.value));}catch{}
+      try{const r=await storage.get("ag:regs");if(r?.value){const g=JSON.parse(r.value);if(Array.isArray(g)&&g.length>0)setRegs(g);}}catch{}
+      try{const r=await storage.get("ag:campos");if(r?.value)setCampos(JSON.parse(r.value));}catch{}
       setCargando(false);setStOk(true);
     })();
   },[]);
@@ -350,7 +370,7 @@ export default function AGROTECH(){
   async function addReg(reg){
     const n=[reg,...regs];setRegs(n);
     logBitacora("Registro","Cosecha guardada: "+(reg.cantidad_kg||0)+"kg de "+(reg.cultivo||"cultivo")+" en "+(reg.campo||reg.lote||"campo"),"Humano");
-    try{await window.storage.set("ag:regs",JSON.stringify(n.slice(0,5000)));toast("✅ Registro guardado");}
+    try{await storage.set("ag:regs",JSON.stringify(n.slice(0,5000)));toast("✅ Registro guardado");}
     catch{toast("✅ Registro guardado");}
   }
 
@@ -442,13 +462,13 @@ export default function AGROTECH(){
     }
     const reg={...regs[idx],...formEdit,cantidad_kg:Number(formEdit.cantidad_kg),campo:formEdit.campo,lote:formEdit.campo,tipo};
     const nuevos=[...regs]; nuevos[idx]=reg; setRegs(nuevos);
-    try{await window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
+    try{await storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
     setRegEditando(null); toast("✅ Registro actualizado");
   }
   function eliminarRegistro(idx){
     if(!window.confirm("¿Eliminar este registro?")) return;
     const nuevos=regs.filter((_,i)=>i!==idx); setRegs(nuevos);
-    try{window.storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
+    try{storage.set("ag:regs",JSON.stringify(nuevos.slice(0,5000)));}catch{}
     setRegEditando(null); toast("🗑️ Registro eliminado");
   }
 
@@ -459,13 +479,13 @@ export default function AGROTECH(){
     }
     const nuevos={...campos,[campoNombre.trim()]:Number(campoHas)};
     setCampos(nuevos);
-    try{await window.storage.set("ag:campos",JSON.stringify(nuevos));}catch{}
+    try{await storage.set("ag:campos",JSON.stringify(nuevos));}catch{}
     setCampoNombre(""); setCampoHas("");
     toast("✅ Campo guardado");
   }
   async function eliminarCampo(nombre){
     const nuevos={...campos}; delete nuevos[nombre]; setCampos(nuevos);
-    try{await window.storage.set("ag:campos",JSON.stringify(nuevos));}catch{}
+    try{await storage.set("ag:campos",JSON.stringify(nuevos));}catch{}
     toast("Campo eliminado");
   }
 
@@ -515,11 +535,13 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
     if(filtrados.length===0){setRep({error:"Aún no tienes registros de cosecha. Registra al menos una cosecha para generar el informe."});setLoadRep(false);return;}
     const totalKg=filtrados.reduce((s,r)=>s+Number(r.cantidad_kg||0),0);
     const labels={hoy:"de hoy",semana:"de los últimos 7 días",mes:"del último mes"};
-    const lineas=filtrados.map(r=>r.cultivo+"|"+(r.campo||r.lote)+"|"+r.fecha+"|"+r.cantidad_kg+"kg|"+r.calidad+"|"+r.problema).join(", ");
-    const msg="Período: "+labels[p]+". "+filtrados.length+" registros, "+totalKg+" kg. Datos: "+lineas;
-    const res=await callIA(PR,msg,2000);
-    if(res&&res.calificacion_semana) setRep(res);
-    else setRep({error:res?.mensaje||"No se pudo generar. Intenta de nuevo."});
+    // Limitar a 40 registros para no saturar el prompt
+    const muestra=filtrados.slice(0,40);
+    const lineas=muestra.map(r=>r.cultivo+"|"+(r.campo||r.lote||"campo")+"|"+r.fecha+"|"+r.cantidad_kg+"kg|"+r.calidad+"|"+(r.problema||"sin problema")).join(", ");
+    const msg="Periodo: "+labels[p]+". "+filtrados.length+" registros totales, "+totalKg+" kg en total. Datos de cosecha: "+lineas;
+    const res=await callIA(PR,msg,3000);
+    if(res&&(res.calificacion_semana||res.resumen_ejecutivo)) setRep(res);
+    else setRep({error:"No se pudo generar el informe. La IA respondió: "+(res?.mensaje||"sin respuesta")+". Intenta de nuevo en unos segundos."});
     setLoadRep(false);
   }
 
@@ -528,14 +550,14 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
     const entrada={id:Date.now(),fecha:ahora.toLocaleDateString("es-PE"),hora:ahora.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),componente,accion,responsable};
     setBitacora(prev=>{
       const nuevas=[entrada,...prev].slice(0,200);
-      try{window.storage.set("ag:bitacora",JSON.stringify(nuevas));}catch{}
+      try{storage.set("ag:bitacora",JSON.stringify(nuevas));}catch{}
       return nuevas;
     });
   }
 
   async function borrarRegistros(){
     if(window.confirm("¿Borrar todos los registros? Esta acción no se puede deshacer.")){
-      try{await window.storage.delete("ag:regs");}catch{}
+      try{await storage.delete("ag:regs");}catch{}
       setRegs([]);
       toast("Datos borrados.");
     }
@@ -567,7 +589,7 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
     setLoadClima(false);
   }
 
-  async function doAlertas(){setLoadA(true);setAlertas([]);const r=await callIA(PA,regs.slice(0,30).map(r=>`Campo:${r.campo} Cultivo:${r.cultivo} Fecha:${r.fecha} Kg:${r.cantidad_kg} Calidad:${r.calidad} Problema:${r.problema}`).join("\n"));setAlertas(r.alertas||[]);setResA(r.resumen||"");setLoadA(false);}
+  async function doAlertas(){if(loadA)return;setLoadA(true);setAlertas([]);const r=await callIA(PA,regs.slice(0,30).map(r=>`Campo:${r.campo} Cultivo:${r.cultivo} Fecha:${r.fecha} Kg:${r.cantidad_kg} Calidad:${r.calidad} Problema:${r.problema}`).join("\n"));setAlertas(r.alertas||[]);setResA(r.resumen||"");setLoadA(false);}
   async function doPreds(){setLoadP(true);setPreds([]);const r=await callIA(PP,regs.slice(0,40).map(r=>`Campo:${r.campo} Cultivo:${r.cultivo} Fecha:${r.fecha} Kg:${r.cantidad_kg} Calidad:${r.calidad} Problema:${r.problema}`).join("\n"));setPreds(r.predicciones||[]);setRecGen(r.recomendacion_general||"");setKpiP(r.kpi_proyectado||null);setLoadP(false);}
 
   async function doChat(msg){
@@ -576,8 +598,6 @@ Rendimientos Perú: espárrago 8-12t/ha/año, palta 10-15t/ha/año, arándano 8-
     const resp=await callChat(ms.map(x=>({role:x.role,content:x.content})),mkChat(regs));
     setChatMs(v=>[...v,{role:"assistant",content:resp}]);setLoadChat(false);
   }
-
-  async function doRep(){setLoadRep(true);setRep(null);const r=await callIA(PR,`Historial:\n${regs.slice(0,30).map(r=>`${r.cultivo}|${r.campo}|${r.fecha}|${r.cantidad_kg}kg|${r.calidad}|${r.problema}`).join("\n")}\nTotal:${regs.length},${regs.reduce((s,r)=>s+Number(r.cantidad_kg||0),0)}kg`,2000);setRep(r);setLoadRep(false);}
 
   async function analizarFoto(){
     if(!foto) return;
@@ -625,8 +645,10 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
     const file=e.target.files[0];
     if(!file) return;
     setFoto(file); setFotoResult(null);
-    const url=URL.createObjectURL(file);
-    setFotoPreview(url);
+    setFotoPreview(prev=>{
+      if(prev) try{URL.revokeObjectURL(prev);}catch{}
+      return URL.createObjectURL(file);
+    });
   }
 
   async function doPl(){if(!plSint.trim())return;setLoadPl(true);setPlRes(null);setSConf([]);setPlRef(null);const p=await callIA(PPL,`Cultivo:${plCult||"no especificado"}\nSíntomas:${plSint}`,1800);setPlRes(p);setLoadPl(false);}
@@ -663,7 +685,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
   );
 
   return(
-    <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans','Segoe UI',sans-serif",overflow:"hidden",background:G.bg}}>
+    <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans','Segoe UI',sans-serif",overflow:"hidden",background:G.bg,filter:modoC?"contrast(1.35) brightness(1.08) saturate(1.2)":"none",transition:"filter 0.3s"}}>
 
       {/* ──── SIDEBAR ──── */}
       <div style={{width:sb?215:52,minWidth:sb?215:52,background:G.sidebar,display:"flex",flexDirection:"column",transition:"all 0.2s",overflow:"hidden",flexShrink:0}}>
@@ -1157,7 +1179,7 @@ Observa detalladamente y responde SOLO JSON sin texto adicional:
             <Card>
               <Titulo icon="📜" text="Historial de cosechas"/>
               <div style={{marginBottom:11}}><select value={filtroT} onChange={e=>setFiltroT(e.target.value)} style={{...inp,fontSize:13}}><option value="todos">Todos los campos ({regs.length})</option>{[...new Set(regs.map(r=>r.campo||r.lote).filter(Boolean))].map(c=><option key={c} value={c}>{c} ({regs.filter(r=>(r.campo||r.lote)===c).length})</option>)}</select></div>
-              {filtroT!=="todos"&&(()=>{const rs=regs.filter(r=>(r.campo||r.lote)===filtroT);const tot=rs.reduce((s,r)=>s+Number(r.cantidad_kg||0),0);return(<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:11}}>{[{l:"Total kg",v:tot.toLocaleString(),c:G.verde},{l:"Promedio",v:Math.round(tot/rs.length).toLocaleString()+" kg",c:G.azul},{l:"Problemas",v:rs.filter(r=>r.problema&&!r.problema.includes("Ninguno")).length,c:G.rojo}].map((k,i)=><div key={i} style={{background:`${k.c}10`,borderRadius:8,padding:"9px",textAlign:"center",border:`1px solid ${k.c}20`}}><div style={{fontWeight:800,fontSize:17,color:k.c}}>{k.v}</div><div style={{fontSize:10,color:"#aaa",marginTop:2}}>{k.l}</div></div>)}</div>);})()}
+              {filtroT!=="todos"&&(()=>{const rs=regs.filter(r=>(r.campo||r.lote)===filtroT);const tot=rs.reduce((s,r)=>s+Number(r.cantidad_kg||0),0);return(<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:11}}>{[{l:"Total kg",v:tot.toLocaleString(),c:G.verde},{l:"Promedio",v:Math.round(tot/Math.max(rs.length,1)).toLocaleString()+" kg",c:G.azul},{l:"Problemas",v:rs.filter(r=>r.problema&&!r.problema.includes("Ninguno")).length,c:G.rojo}].map((k,i)=><div key={i} style={{background:`${k.c}10`,borderRadius:8,padding:"9px",textAlign:"center",border:`1px solid ${k.c}20`}}><div style={{fontWeight:800,fontSize:17,color:k.c}}>{k.v}</div><div style={{fontSize:10,color:"#aaa",marginTop:2}}>{k.l}</div></div>)}</div>);})()}
               {(filtroT==="todos"?regs:regs.filter(r=>(r.campo||r.lote)===filtroT)).map((r,i)=>(
                 <div key={i} style={{border:`1px solid ${G.borde}`,borderLeft:`4px solid ${TC[r.tipo]||G.verde}`,borderRadius:9,padding:"10px 12px",marginBottom:7}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
